@@ -6,7 +6,7 @@
   <link href="/atom.xml" rel="self"/>
   
   <link href="http://70-studio.top/"/>
-  <updated>2020-01-28T08:21:43.575Z</updated>
+  <updated>2020-03-15T14:24:15.304Z</updated>
   <id>http://70-studio.top/</id>
   
   <author>
@@ -15,6 +15,31 @@
   </author>
   
   <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>论Windows x64下动态库劫持技术</title>
+    <link href="http://70-studio.top/2020/03/15/%E8%AE%BAWindows-x64%E4%B8%8B%E5%8A%A8%E6%80%81%E5%BA%93%E5%8A%AB%E6%8C%81%E6%8A%80%E6%9C%AF/"/>
+    <id>http://70-studio.top/2020/03/15/%E8%AE%BAWindows-x64%E4%B8%8B%E5%8A%A8%E6%80%81%E5%BA%93%E5%8A%AB%E6%8C%81%E6%8A%80%E6%9C%AF/</id>
+    <published>2020-03-15T13:31:48.000Z</published>
+    <updated>2020-03-15T14:24:15.304Z</updated>
+    
+    <summary type="html">
+    
+      &lt;h2 id=&quot;1-引子&quot;&gt;&lt;a href=&quot;#1-引子&quot; class=&quot;headerlink&quot; title=&quot;1. 引子&quot;&gt;&lt;/a&gt;1. 引子&lt;/h2&gt;&lt;p&gt;很多时候出于各种各样的原因我们需要用到DLL(动态库)劫持来达成我们的目的, 这时候我们会用到一些DLL劫持神器, 比如&lt;strong&gt;AheadLib&lt;/strong&gt; 这可以自动生成劫持相关的代码无需我们去提取导出函数, 我们只需要将该代码编译成DLL, 再冒名顶替原始DLL就可以啦~~&lt;br&gt;之前有用过AheadLib来分析一个商业软件与第三方组件的交互流程, 效果不错所以印象深刻.
+    
+    </summary>
+    
+    
+      <category term="技术" scheme="http://70-studio.top/categories/%E6%8A%80%E6%9C%AF/"/>
+    
+    
+      <category term="动态库劫持" scheme="http://70-studio.top/tags/%E5%8A%A8%E6%80%81%E5%BA%93%E5%8A%AB%E6%8C%81/"/>
+    
+      <category term="调用约定" scheme="http://70-studio.top/tags/%E8%B0%83%E7%94%A8%E7%BA%A6%E5%AE%9A/"/>
+    
+      <category term="x64 fastcall" scheme="http://70-studio.top/tags/x64-fastcall/"/>
+    
+  </entry>
   
   <entry>
     <title>建站之初</title>

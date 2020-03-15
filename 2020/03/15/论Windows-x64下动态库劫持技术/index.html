@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="柒零de工作室" />
+   
+  <meta name="description" content="柒零de工作室 - 一个致力于打造互联网实用工具的工作室" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    论Windows x64下动态库劫持技术 |  柒零de工作室
+  </title>
+  <meta name="generator" content="hexo-theme-yilia-plus">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/css/main.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+
+<link rel="alternate" href="/atom.xml" title="柒零de工作室" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    <main class="content">
+      <section class="outer">
+  <article id="post-论Windows-x64下动态库劫持技术" class="article article-type-post" itemscope
+  itemprop="blogPost" data-scroll-reveal>
+
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  论Windows x64下动态库劫持技术
+</h1>
+  
+
+    </header>
+    
+
+    
+    <div class="article-meta">
+      <a href="/2020/03/15/%E8%AE%BAWindows-x64%E4%B8%8B%E5%8A%A8%E6%80%81%E5%BA%93%E5%8A%AB%E6%8C%81%E6%8A%80%E6%9C%AF/" class="article-date">
+  <time datetime="2020-03-15T13:31:48.000Z" itemprop="datePublished">2020-03-15</time>
+</a>
+      
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E6%8A%80%E6%9C%AF/">技术</a>
+  </div>
+
+      
+      
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">4.6k字</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">18分钟</span>
+        </span>
+    </span>
+</div>
+
+      
+    </div>
+    
+
+    
+    
+    <div class="tocbot"></div>
+
+
+
+
+
+    
+
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+
+
+      
+
+      
+      <h2 id="1-引子"><a href="#1-引子" class="headerlink" title="1. 引子"></a>1. 引子</h2><p>很多时候出于各种各样的原因我们需要用到DLL(动态库)劫持来达成我们的目的, 这时候我们会用到一些DLL劫持神器, 比如<strong>AheadLib</strong> 这可以自动生成劫持相关的代码无需我们去提取导出函数, 我们只需要将该代码编译成DLL, 再冒名顶替原始DLL就可以啦~~<br>之前有用过AheadLib来分析一个商业软件与第三方组件的交互流程, 效果不错所以印象深刻.   <a id="more"></a><br>就在不久前我也有了一个类似的需求, 去分析一个64位软件,  手里面的AheadLib是32位版本没法用, 后来在看雪论坛找到了一份修改版;   </p>
+<p><strong>好了废话就不多说了接下来步入正题:</strong>   </p>
+<p>64位的AheadLib生成的代码比之前有了很大的修改, 这是因为在Win x64环境下<strong>函数的前4个参数是通过寄存器传递</strong>, 与x86环境下所有参数经过压栈传递(cdecl, stdcall, …)大有不同; </p>
+<h2 id="2-简述x86-与-x64-下C-C-函调用的差异"><a href="#2-简述x86-与-x64-下C-C-函调用的差异" class="headerlink" title="2. 简述x86 与 x64 下C/C++函调用的差异"></a>2. 简述x86 与 x64 下C/C++函调用的差异</h2><p>在x86下C/C++函数的调用方式(其实也就是<strong>调用约定</strong>)主要有如下几种方式, 参数均通过压栈传递:</p>
+<ol>
+<li>cdecl    (Microsoft C++系列编译器的默认调用方式)</li>
+<li>stdcall  (Windows绝大部分API的默认调用方式, 有时候也称为pascal)</li>
+<li>thiscall (C++成员函数的调用方式)</li>
+</ol>
+<p>下面我们来看看在汇编层面上具体的调用流程:  </p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; x86 cdecl调用约定下的参数传递</span><br><span class="line">int main()</span><br><span class="line">&#123;</span><br><span class="line">    test_function(0x5555aaaa, 0x3333eeee, </span><br><span class="line">        3.141592656245, 0x2222dddd, 0x1111bbbb, 0x6666ffff);</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">; 这是对应的汇编代码</span><br><span class="line">fld         qword ptr [__real@400921fb549f688a]  </span><br><span class="line">push        6666FFFFh                               ; 参数6, 放到栈上</span><br><span class="line">push        1111BBBBh                               ; 参数5, 放到栈上</span><br><span class="line">push        2222DDDDh                               ; 参数4, 放到栈上  </span><br><span class="line">sub         esp,8  </span><br><span class="line">fstp        qword ptr [esp]                         ; 参数3, 放到栈上</span><br><span class="line">push        3333EEEEh                               ; 参数2, 放到栈上</span><br><span class="line">push        5555AAAAh                               ; 参数1, 放到栈上</span><br><span class="line">call        dword ptr [__imp_test_function]         ; 调用</span><br><span class="line">add         esp,1Ch                                 ; 平栈</span><br><span class="line">xor         eax,eax                                 ; 返回值清0</span><br><span class="line">ret</span><br></pre></td></tr></table></figure>
+
+<p>而到了x64就只剩下了一种快速调用约定(x64) fastcall, 虽然在x86下该约定也存在但极少见到我们这里不讨论:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; x64 环境下的参数传递</span><br><span class="line">int main()</span><br><span class="line">&#123;</span><br><span class="line">    test_function(0x5555aaaa, 0x3333eeee, </span><br><span class="line">        3.141592656245, 0x2222dddd, 0x1111bbbb, 0x6666ffff);</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">; 这是对应的汇编代码</span><br><span class="line">sub         rsp,38h                                     ; 20h(影子空间) + 10h(参数5,6放在栈上) + 8h(对齐用的)</span><br><span class="line">movsd       xmm2,mmword ptr [__real@400921fb549f688a]   ; 参数3, 浮点数放在xmm2</span><br><span class="line">mov         r9d,2222DDDDh                               ; 参数4</span><br><span class="line">mov         edx,3333EEEEh                               ; 参数2</span><br><span class="line">mov         ecx,5555AAAAh                               ; 参数1</span><br><span class="line">mov         dword ptr [rsp+28h],6666FFFFh               ; 参数6, 放到栈上</span><br><span class="line">mov         dword ptr [rsp+20h],1111BBBBh               ; 参数5, 放到栈上</span><br><span class="line">call        qword ptr [__imp_test_function]             ; 调用</span><br><span class="line">xor         eax,eax                                     ; 清空返回值</span><br><span class="line">add         rsp,38h                                     ; 平栈  </span><br><span class="line">ret</span><br></pre></td></tr></table></figure>
+
+<p>从上面我们可以看到x64的前4个参数通过寄存器传递, 如果参数大于4才会走栈, 而x86的调用约定都是通过栈传递;<br>为了推动剧情的发展, 在这里要重点说明一下x64 fastcall调用约定的细节 (略过x86 如果各位对x86的调用约定感兴趣的话可以参考相关的资料)</p>
+<h2 id="3-x64-fastcall调用约定"><a href="#3-x64-fastcall调用约定" class="headerlink" title="3. x64 fastcall调用约定"></a>3. x64 fastcall调用约定</h2><p>参考文档: <a href="https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=vs-2019" target="_blank" rel="noopener">https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=vs-2019</a></p>
+<p>总的来说x64 fastcall约定了以下几个关键点:  </p>
+<ol>
+<li><strong>函数参数如何传递</strong><ol>
+<li>前四个除浮点型以外的参数<strong>从左至右通过RCX, RDX, R8, R9传递</strong>;</li>
+<li>前四个浮点型参数从左至右通过XMM0L, XMM1L, XMM2L, XMM3L传递;</li>
+<li><strong>除1, 2条之外的参数均从右到左压栈传递</strong>;</li>
+<li>调用者需要为4个寄存器(不管参数是什么样总共只有4个寄存器)<strong>分配栈空间, 我们称为影子空间</strong>, 被调用方<strong>选择性的</strong>将寄存器中的参数保存到该空间;</li>
+<li>若有参数需要入栈那么应在影子空间的前面(<strong>高地址方向</strong>)</li>
+<li><strong>编译器对参数总是从右至左处理: 如某函数有6个参数, 那么首先入栈参数6, 5, 再将参数1, 2, 3, 4分别存入RCX, RDX, R8, R9</strong>;</li>
+</ol>
+</li>
+<li><strong>函数参数的栈空间由哪方开辟, 哪方释放?</strong><ol>
+<li>由调用方开辟, 也由调用方恢复;</li>
+</ol>
+</li>
+<li><strong>函数返回值如何返回</strong><ol>
+<li>不大于8字节的返回值通过RAX返回;</li>
+</ol>
+</li>
+<li><strong>函数如何使用寄存器</strong><ol>
+<li>寄存器RAX、RCX、RDX、R8、R9、R10、R11、XMM0-5以及YMM0-15和ZMM0-15的上半部分被认为是易失性的，必须在函数调用时考虑被销毁(除非通过整个程序优化等分析可以安全证明)。在AVX512VL上，ZMM、YMM和XMM寄存器16-31是易失的。</li>
+<li>寄存器RBX、RBP、RDI、RSI、RSP、R12、R13、R14、R15和XMM6-15被认为是非易失性的，必须由使用它们的函数保存和恢复。</li>
+</ol>
+</li>
+<li><strong>函数的栈地址必须保证16字节对齐</strong></li>
+</ol>
+<p>哈哈 一下子看到这么多是不是跟我一样快歇菜了,  没关系暂时不明白也没事, 下面跟着代码看着图会清晰很多;</p>
+<h2 id="4-简述x86与x64下DLL导出函数劫持"><a href="#4-简述x86与x64下DLL导出函数劫持" class="headerlink" title="4. 简述x86与x64下DLL导出函数劫持"></a>4. 简述x86与x64下DLL导出函数劫持</h2><p>动态库劫持技术分为如下几个步凑:</p>
+<ol>
+<li>提取源DLL中所有导出函数</li>
+<li>根据提取的导出函数编写转发或劫持代码</li>
+<li>将编译生成好的DLL, 替换原始DLL(原始DLL需改个名字, 因为最后还是要调用原始DLL中的代码)  </li>
+</ol>
+<p>而导出函数(<strong>下面统一称为原始函数</strong>)的劫持又分为以下步骤:<br>(因为这篇文章的内容的是劫持目标进程的函数调用所以这里不讨论转发)  </p>
+<ol>
+<li>编写我们自己的函数(<strong>下面统一称为劫持函数</strong>), 并通过”声明”将其导出为与原始函数相同的名称</li>
+<li>目标进程调用我们的劫持函数, 做完我们想做的事之后 嘿嘿.. 再调用原始函数;(<strong>这一步我们可以拿到调用参数</strong>)</li>
+<li>等待原始函数返回后, 再通过其返回值返回到目标进程领空; (<strong>此时我们可以拿到返回值或者被修改后的参数</strong>)</li>
+</ol>
+<p>这样咋一看起来, 我滴个乖乖, 要做的事情还真不少!<br>不过幸运的是关于编码的部分AheadLib已经为我们做的差不多了, 下面是劫持的部分代码:<br>(x64的比较复杂故先上x86的预热一下)</p>
+<h3 id="4-1-x86原始函数劫持"><a href="#4-1-x86原始函数劫持" class="headerlink" title="4.1 x86原始函数劫持"></a>4.1 x86原始函数劫持</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; 下面告诉编译器: </span><br><span class="line">&#x2F;&#x2F;      1. 将劫持函数_AheadLib_OpenDataBase以OpenDataBase名称导出</span><br><span class="line">&#x2F;&#x2F;      2. 当目标进程通过该DLL调用原始函数OpenDataBase时, 实际调用的是AheadLib_OpenDataBase函数</span><br><span class="line">#pragma comment(linker, &quot;&#x2F;EXPORT:OpenDataBase&#x3D;_AheadLib_OpenDataBase,@1&quot;)</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 省略代码若干...</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 获取原始函数地址</span><br><span class="line">FARPROC WINAPI GetAddress(PCSTR pszProcName)</span><br><span class="line">&#123;</span><br><span class="line">    FARPROC fpAddress;</span><br><span class="line">    CHAR szProcName[16];</span><br><span class="line">    TCHAR tzTemp[MAX_PATH];</span><br><span class="line"></span><br><span class="line">    fpAddress &#x3D; GetProcAddress(m_hModule, pszProcName);</span><br><span class="line">    if (fpAddress &#x3D;&#x3D; NULL)</span><br><span class="line">    &#123;</span><br><span class="line">        if (HIWORD(pszProcName) &#x3D;&#x3D; 0)</span><br><span class="line">        &#123;</span><br><span class="line">            wsprintfA(szProcName, &quot;%d&quot;, pszProcName);</span><br><span class="line">            pszProcName &#x3D; szProcName;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        wsprintf(tzTemp, TEXT(&quot;无法找到函数 %hs，程序无法正常运行。&quot;), pszProcName);</span><br><span class="line">        MessageBox(NULL, tzTemp, TEXT(&quot;AheadLib&quot;), MB_ICONSTOP);</span><br><span class="line">        ExitProcess(-2);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    return fpAddress;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 省略代码若干...</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; ALCDECL 被定义为: extern &quot;C&quot; __declspec(naked) void __cdecl</span><br><span class="line">&#x2F;&#x2F; 目的是告诉编译器:</span><br><span class="line">&#x2F;&#x2F;      1. 使用C语言的名称改编规则</span><br><span class="line">&#x2F;&#x2F;      2. 内部使用的汇编代码不需要修饰</span><br><span class="line">&#x2F;&#x2F;      3. 使用cdecl调用约定</span><br><span class="line">ALCDECL AheadLib_OpenDataBase(void)</span><br><span class="line">&#123;</span><br><span class="line">    &#x2F;&#x2F; 此时原始函数的参数已经保存在栈上</span><br><span class="line">    &#x2F;&#x2F; 可以在这里直接通过栈寄存器ESP+4直接访问, 此时注意好栈平衡不要破坏数据即可;</span><br><span class="line">    &#x2F;&#x2F; 注意ESP是AheadLib_OpenDataBase的返回地址</span><br><span class="line">    </span><br><span class="line">    GetAddress(&quot;OpenDataBase&quot;);</span><br><span class="line">    __asm JMP EAX;</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; 上面两行代码作用如下:</span><br><span class="line">    &#x2F;&#x2F;      1. 首先找到原始函数的地址, 该地址作为返回值保存在寄存器EAX中;</span><br><span class="line">    &#x2F;&#x2F;      2. 通过JMP指令直接将CPU的执行绪跳转到原始函数并开始执行</span><br><span class="line">    &#x2F;&#x2F;      3. 由于JMP跳转前栈中第一个保存的是AheadLib_OpenDataBase的返回地址, 故原始函数执行完成后会直接返回到目标进程领空, 所以不会执行后面的代码了;</span><br><span class="line">    &#x2F;&#x2F; 若这里需要处理原始函数的返回值则稍微要修改下汇编代码了, 这里不多赘述因为主要还是讨论X64 ^_^</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-2-x64原始函数劫持"><a href="#4-2-x64原始函数劫持" class="headerlink" title="4.2 x64原始函数劫持"></a>4.2 x64原始函数劫持</h3><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; 这部分流程与x86一样 </span><br><span class="line">#pragma comment(linker, &quot;&#x2F;EXPORT:OpenDataBase&#x3D;_AheadLib_OpenDataBase,@1&quot;)</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 这里多了一个函数指针</span><br><span class="line">PVOID pfnOpenDataBase;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 省略代码若干...</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 这里也差不多</span><br><span class="line">FARPROC WINAPI GetAddress(PCSTR pszProcName)</span><br><span class="line">&#123;</span><br><span class="line">    FARPROC fpAddress;</span><br><span class="line">    CHAR szProcName[16];</span><br><span class="line">    TCHAR tzTemp[MAX_PATH];</span><br><span class="line"></span><br><span class="line">    fpAddress &#x3D; GetProcAddress(m_hModule, pszProcName);</span><br><span class="line">    if (fpAddress &#x3D;&#x3D; NULL)</span><br><span class="line">    &#123;</span><br><span class="line">        if (HIWORD(pszProcName) &#x3D;&#x3D; 0)</span><br><span class="line">        &#123;</span><br><span class="line">            wsprintfA(szProcName, &quot;%d&quot;, pszProcName);</span><br><span class="line">            pszProcName &#x3D; szProcName;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        wsprintf(tzTemp, TEXT(&quot;无法找到函数 %hs，程序无法正常运行。&quot;), pszProcName);</span><br><span class="line">        MessageBox(NULL, tzTemp, TEXT(&quot;AheadLib&quot;), MB_ICONSTOP);</span><br><span class="line">        ExitProcess(-2);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    return fpAddress;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 这里多了个函数, 与x86不同的是 在DLL加载的时候先把原始函数的指针找出来而已</span><br><span class="line">inline VOID WINAPI InitializeAddresses()</span><br><span class="line">&#123;</span><br><span class="line">    pfnOpenDataBase &#x3D; GetAddress(&quot;OpenDataBase&quot;);</span><br><span class="line">    &#x2F;&#x2F; 省略代码若干...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 咦... 这里多了三个外部函数</span><br><span class="line">extern &quot;C&quot; extern void prevFunc();</span><br><span class="line">extern &quot;C&quot; extern void setFunc(LPVOID p);</span><br><span class="line">extern &quot;C&quot; extern void endFunc();</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; 省略代码若干...</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; ALCDECL 定义略有修改: extern &quot;C&quot; void __cdecl</span><br><span class="line">&#x2F;&#x2F; 目的是告诉编译器:</span><br><span class="line">&#x2F;&#x2F;      1. 使用C语言的名称改编规则</span><br><span class="line">&#x2F;&#x2F;      2. 使用cdecl调用约定</span><br><span class="line">ALCDECL AheadLib_OpenDataBase(void)</span><br><span class="line">&#123;</span><br><span class="line">    &#x2F;&#x2F; 诶, 这里不是上面多出来的三个外部函数吗? </span><br><span class="line">    &#x2F;&#x2F; 等等... 实现哪儿去了?</span><br><span class="line">    prevFunc();</span><br><span class="line">    setFunc(&amp;pfnOpenDataBase);</span><br><span class="line">    endFunc();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上面就是整个x64的劫持实现, 看起来也没多复杂哈, 不过别忘了还有三个找不到定义的鬼函数;<br>如果有用过AheadLib x64的同学应该会发现随着生成劫持代码, <strong>还会生成一个同名的.obj文件</strong> 这里面就是那三个神秘函数的实现;</p>
+<p>那么问题来了, 为什么会将实现放在obj文件里面呢?<br>答案是: <strong>x64环境下MSVC编译器(Visual Studio系列)已经不再支持内联汇编代码了, 所以放在了.obj文件中</strong></p>
+<p>我们用ida反编译来看看代码长什么样</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">prevFunc PROC</span><br><span class="line">mov  qword ptr [rsp+38h],rcx  ; 将各参数保存至它们的影子空间, </span><br><span class="line">                              ; 因在劫持函数内栈增加了28h的空间以及该函数的返回地址共计30h</span><br><span class="line">mov  qword ptr [rsp+40h],rdx  </span><br><span class="line">mov  qword ptr [rsp+48h],r8  </span><br><span class="line">mov  qword ptr [rsp+50h],r9  </span><br><span class="line">ret  </span><br><span class="line">prevFunc ENDP</span><br><span class="line"></span><br><span class="line">setFunc PROC</span><br><span class="line">mov  rax,rcx                  ; 保存真实函数地址到rax </span><br><span class="line">ret</span><br><span class="line">setFunc ENDP</span><br><span class="line"></span><br><span class="line">endFunc PROC</span><br><span class="line">pop  rbx                      ; 弹出endFunc的返回地址</span><br><span class="line">add  rsp,28h                  ; 去除劫持函数中预留的0x28大小空间(内存对齐用的8字节+影子空间)</span><br><span class="line">pop  rbx                      ; 弹出劫持函数的返回地址到rbx中保留</span><br><span class="line">pop  rcx                      ; 弹出参数1</span><br><span class="line">pop  rdx                      ; 弹出参数2</span><br><span class="line">pop  r8                       ; 弹出参数3</span><br><span class="line">pop  r9                       ; 弹出参数4</span><br><span class="line">sub  rsp,20h                  ; 恢复因弹出导致的栈顶变化</span><br><span class="line">push rbx                      ; 压栈外部的返回地址</span><br><span class="line">jmp  qword ptr [rax]          ; 跳转到真实函数的入口</span><br><span class="line">ret                           ; 这里应该是执行不到的</span><br><span class="line">endFunc ENDP</span><br></pre></td></tr></table></figure>
+
+<p>我们结合劫持函数AheadLib_OpenDataBase的汇编代码分析:</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">; ALCDECL AheadLib_OpenDataBase(void)</span><br><span class="line">; &#123;</span><br><span class="line">    sub  rsp,28h              ; 分配内存对齐用的8字节+下面三个函数的影子空间</span><br><span class="line">    call prevFunc             ; prevFunc();</span><br><span class="line">    lea  rcx,[pfnOpenDataBase]  </span><br><span class="line">    call setFunc              ; setFunc(&amp;pfnOpenDataBase);</span><br><span class="line">    call endFunc              ; endFunc();</span><br><span class="line">    add  rsp,28h  </span><br><span class="line">    ret</span><br><span class="line">; &#125;</span><br></pre></td></tr></table></figure>
+
+<p>再让我们来结合下面的图来仔细分析这些代码到底干了什么?<br><img src="https://note.youdao.com/yws/api/personal/file/3DC531BA9B1A4EA18272C8DB010B6B87?method=download&shareKey=92ee3b5564744e3d7c4ac95637478674" alt="image"></p>
+<p>我们假设OpenDataBase有6个参数, 那么前四个通过RCX, RDX, R8, R9传递, 后两个通过栈传递;  </p>
+<ol>
+<li>目标进程为了调用OpenDataBase函数, 通过sub rsp, 50h分配了一个栈空间(影子空间, 参数空间, 其他局部变量存储空间共计50h)</li>
+<li>目标进程将参数6放在rsp+28h, 参数5放在rsp+20h, rsp指向RCX, RDX, R8, R9也就是参数1,2,34的影子空间;</li>
+<li>目标进程调用OpenDataBase进入到AheadLib_OpenDataBase, 此时返回地址入栈</li>
+<li>AheadLib_OpenDataBase为了调用三个神秘函数所以需要分配20h的影子空间(即使他们中最多只有一个参数), 又因为x64 fastcall栈空间16字节对齐的缘故所以开辟的28h字节的栈空间;</li>
+<li>调用prevFunc, 此时rsp与原始函数的影子空间距离为: <ol>
+<li>8h字节(prevFunc 返回地址) + </li>
+<li>28h字节(AheadLib_OpenDataBase 开辟的栈空间) + </li>
+<li>8h字节(AheadLib_OpenDataBase 返回地址)</li>
+<li>共计38h, 即rsp+38h指向参数1,  rsp+50h指向参数4</li>
+</ol>
+</li>
+<li>prevFunc分别将参数1,2,3,4保存到他们自己的影子空间, 以备后用;</li>
+<li>setFunc没啥好说的就是将原始函数指针的地址放在rax;</li>
+<li>到了endFunc重头戏终于来了:<ol>
+<li>通过上面代码的注释应该可以看出, 这里重新将影子空间的值读取到RCX, RDX, R8, R9中;</li>
+<li>然后将AheadLib_OpenDataBase返回地址 放入栈,  直接将其替换为原始函数的返回地址, 故原始函数会直接返回到目标进程领空;</li>
+</ol>
+</li>
+</ol>
+<h2 id="5-AheadLib-x64的bug"><a href="#5-AheadLib-x64的bug" class="headerlink" title="5. AheadLib x64的bug"></a>5. AheadLib x64的bug</h2><p>在通过AheadLib x64生成的代码到生产环境下可能会在运行过程中产生一个崩溃(别问我怎么知道的);<br>可能细心的同学已经看出来了, 对, 就是它!<br>endFunc在<strong>未经保存下使用了非易失性寄存器rbx</strong>;<br>通过文档我们可以得知易失性寄存器除了作为参数的4个RCX, RDX, R8, R9以外还有R10、R11等, 我们就替换成r10吧, 完美解决;  </p>
+<p>修改后如下:  </p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">endFunc PROC</span><br><span class="line">pop         r10               ; 弹出endFunc的返回地址</span><br><span class="line">add         rsp,28h           ; 去除劫持函数中预留的0x28大小空间(内存对齐用的8字节+影子空间)</span><br><span class="line">pop         r10               ; 弹出劫持函数的返回地址到r10中保留</span><br><span class="line">pop         rcx               ; 弹出参数1</span><br><span class="line">pop         rdx               ; 弹出参数2</span><br><span class="line">pop         r8                ; 弹出参数3</span><br><span class="line">pop         r9                ; 弹出参数4</span><br><span class="line">sub         rsp,20h           ; 恢复因弹出导致的栈顶变化</span><br><span class="line">push        r10               ; 压栈外部的返回地址</span><br><span class="line">jmp         qword ptr [rax]   ; 跳转到真实函数的入口</span><br><span class="line">ret                           ; 这里应该是执行不到的</span><br><span class="line">endFunc ENDP</span><br></pre></td></tr></table></figure>
+
+<h2 id="6-AheadLib-x64的不足及解决方案"><a href="#6-AheadLib-x64的不足及解决方案" class="headerlink" title="6. AheadLib x64的不足及解决方案"></a>6. AheadLib x64的不足及解决方案</h2><p>我们在前面说过可以在原始函数的调用前后分别拿到它的参数及返回值, 那我们该如何做呢?<br>首先我们要考虑的是在原始函数调用前通知我们并告诉我们它的参数, 在原始函数调用后也如此不过携带的信息是它的返回值;  </p>
+<p>那么我们这可以这样设计, 做两个回调函数, 分别在原始函数调用前后将影子空间地址及返回值作为参数传递过去, 为了保证在回调函数调用过程中不破坏这些寄存器我们还需要将其保存起来;  </p>
+<p><strong>但是这里会遇到一个问题, 我们如何让原始函数返回到劫持函数中?</strong><br>在原有的设计下肯定不行,  我们必须要重新设计下劫持代码,  而且为了最小改动最好能兼容现有的代码;<br>有两种方式可以达到要求: </p>
+<ol>
+<li>在调用原始函数时需要将劫持函数的返回地址从栈里面拿出来保存, 之后再用CAll将JMP替换, 这样可以使得原始函数可以返回到劫持函数;  </li>
+<li>将原始函数的调用栈拷贝到一个新的栈空间, 然后在这个位置上实现原始函数调用;</li>
+</ol>
+<p>基于某些原因, 以及存储方式的考虑个人采用的第二种方案, 大概实现如下图:<br><img src="https://note.youdao.com/yws/api/personal/file/AA838516F02A4446B4077C8536AF14A1?method=download&shareKey=e8251687ac905986781952a7485a77d1" alt="image"></p>
+<p>实现代码如下:  </p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br></pre></td><td class="code"><pre><span class="line">; 声明外部函数:</span><br><span class="line">;    void BeforeOriginFunctionCall(</span><br><span class="line">;       LPVOID pfuncOrgin, LPVOID paramAddress);</span><br><span class="line">;    void AfterOriginFunctionCall(</span><br><span class="line">;       LPVOID pfuncOrgin, LPVOID paramAddress, LPVOID returnValue);</span><br><span class="line">extrn BeforeOriginFunctionCall:near</span><br><span class="line">extrn AfterOriginFunctionCall:near</span><br><span class="line"></span><br><span class="line">.CODE</span><br><span class="line"></span><br><span class="line">prevFunc PROC</span><br><span class="line">mov  qword ptr [rsp+38h], rcx   ; 将各参数保存至它们的影子空间 </span><br><span class="line">mov  qword ptr [rsp+40h], rdx  </span><br><span class="line">mov  qword ptr [rsp+48h], r8  </span><br><span class="line">mov  qword ptr [rsp+50h], r9  </span><br><span class="line">ret  </span><br><span class="line">prevFunc ENDP</span><br><span class="line"></span><br><span class="line">; setFunc函数目在于将原始函数的影子空间及参数空间</span><br><span class="line">; 拷贝到一个新的地方, 然后在这里调用BeforeOriginFunctionCall回调</span><br><span class="line">; 将原始函数地址以及其影子空间(参数栈)作为参数传递过去</span><br><span class="line">setFunc PROC              </span><br><span class="line">mov   qword ptr [rsp+8], rcx    ; 首先保存参数到影子空间</span><br><span class="line">mov   r10, rsp                  ; 并且保存rsp到r10</span><br><span class="line"></span><br><span class="line">sub   rsp, 88h                  ; 开辟80h大小的空间, 可以容纳16个参数, 为了栈16字节对齐故分配88h</span><br><span class="line">push  rsi</span><br><span class="line">push  rdi</span><br><span class="line">pushf</span><br><span class="line"></span><br><span class="line">mov   rcx, 10h                  ; 重复16次</span><br><span class="line">mov   rsi, r10                  </span><br><span class="line">add   rsi, 38h                  ; r10 + 38h, 为原地址, 即从影子空间往下拷贝</span><br><span class="line">mov   rdi, r10</span><br><span class="line">sub   rdi, 88h                  ; r10 - 88h, 为目的地                 </span><br><span class="line">cld                             ; 将movsd的方向设置为向下, 即si, di递增</span><br><span class="line">                                ; 开始拷贝</span><br><span class="line">rep   movs qword ptr [rdi], qword ptr [rsi]                     </span><br><span class="line"></span><br><span class="line">popf</span><br><span class="line">pop   rdi</span><br><span class="line">pop   rsi</span><br><span class="line"></span><br><span class="line">mov   rcx, qword ptr [r10+8h]   </span><br><span class="line">mov   rcx, qword ptr [rcx]      ; 参数1 原始函数指针</span><br><span class="line">mov   rdx, r10</span><br><span class="line">sub   rdx, 88h                  ; 参数2 原始函数参数栈地址</span><br><span class="line">sub   rsp, 20h                  ; 为即将调用的函数开辟影子空间</span><br><span class="line">call  BeforeOriginFunctionCall  ; 调用处理函数</span><br><span class="line">add   rsp, 20h</span><br><span class="line">add   rsp, 88h</span><br><span class="line">mov   rax, qword ptr [rsp+8h]   ; 将影子空间中的参数保存至rax </span><br><span class="line">ret</span><br><span class="line">setFunc ENDP</span><br><span class="line"></span><br><span class="line">; endFunc函数在拷贝的调用栈副本的基础上调用原始函数,</span><br><span class="line">; 并在其返回后将原始函数地址, 参数以及其返回值作为参数调用AfterOriginFunctionCall</span><br><span class="line">endFunc PROC</span><br><span class="line">sub   rsp, 88h                  ; 重置栈到之前开辟的88h处, 这里存放了setFunc拷贝的原始参数</span><br><span class="line"></span><br><span class="line">mov   rcx, qword ptr [rsp+00h]  ; 读取原始参数</span><br><span class="line">mov   rdx, qword ptr [rsp+08h]</span><br><span class="line">mov   r8 , qword ptr [rsp+10h]</span><br><span class="line">mov   r9 , qword ptr [rsp+18h]</span><br><span class="line"></span><br><span class="line">call  qword ptr [rax]           ; 调用原始函数</span><br><span class="line"></span><br><span class="line">mov   r10, rsp</span><br><span class="line">add   r10, 88h                  ; 获得endFunc函数的初始rsp</span><br><span class="line"></span><br><span class="line">mov   rcx, qword ptr [r10+8h]   </span><br><span class="line">mov   rcx, qword ptr [rcx]      ; 从影子空间中读取原始函数的地址, 作为参数1</span><br><span class="line">mov   rdx, rsp                  ; 原始函数的参数地址, 作为参数2</span><br><span class="line">mov   r8 , rax                  ; 原始函数的返回值, 作为参数3</span><br><span class="line"></span><br><span class="line">push  rax                       ; 保存原始函数的返回值</span><br><span class="line">sub   rsp, 20h                  ; 为即将调用的函数开辟影子空间</span><br><span class="line">call  AfterOriginFunctionCall   ; 调用处理函数</span><br><span class="line">add   rsp, 20h</span><br><span class="line">pop   rax</span><br><span class="line"></span><br><span class="line">add   rsp, 88h</span><br><span class="line">ret</span><br><span class="line">endFunc ENDP</span><br><span class="line"></span><br><span class="line">END</span><br></pre></td></tr></table></figure>
+
+<p>这样只需要在回调中实现目标关键函数的解析器即可, 在原始函数调用前拿到其参数列表, 调用后拿到返回值, 完美的API Monitor, 还可以根据配置写断点<code>^_^</code>  </p>
+<p>好了文章到这里就结束了, 写的不好请多担待多指正, 如果有更好的方案也可以提出来让我们共同学习, 提高;</p>
+
+      
+      <!-- reward -->
+      
+    </div>
+    
+    
+      <!-- copyright -->
+      
+        <div class="declare">
+          <ul class="post-copyright">
+            <li>
+              <i class="ri-copyright-line"></i>
+              <strong>版权声明： </strong s>
+              本博客所有文章除特别声明外，均采用 <a href="https://www.apache.org/licenses/LICENSE-2.0.html" rel="external nofollow"
+                target="_blank">Apache License 2.0</a> 许可协议。转载请注明出处！
+            </li>
+          </ul>
+        </div>
+        
+    <footer class="article-footer">
+      
+          
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=http://70-studio.top/2020/03/15/%E8%AE%BAWindows-x64%E4%B8%8B%E5%8A%A8%E6%80%81%E5%BA%93%E5%8A%AB%E6%8C%81%E6%8A%80%E6%9C%AF/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/x64-fastcall/" rel="tag">x64 fastcall</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E5%8A%A8%E6%80%81%E5%BA%93%E5%8A%AB%E6%8C%81/" rel="tag">动态库劫持</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%B0%83%E7%94%A8%E7%BA%A6%E5%AE%9A/" rel="tag">调用约定</a></li></ul>
+
+
+    </footer>
+
+  </div>
+
+  
+  
+  <nav class="article-nav">
+    
+    
+      <a href="/2020/01/28/%E5%BB%BA%E7%AB%99%E4%B9%8B%E5%88%9D/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">建站之初</div>
+      </a>
+    
+  </nav>
+
+
+  
+
+  
+  
+<!-- valine评论 -->
+<div id="vcomments-box">
+    <div id="vcomments">
+    </div>
+</div>
+<script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+<script src='https://cdn.jsdelivr.net/npm/valine@1.3.10/dist/Valine.min.js'></script>
+<script>
+    new Valine({
+        el: '#vcomments',
+        app_id: 'asimnOniRD3Sg6CRmSPA8Mxf-gzGzoHsz',
+        app_key: '9KkP6TchQNcAWGop7AdX1oWN',
+        path: window.location.pathname,
+        notify: 'false',
+        verify: 'false',
+        avatar: 'mp',
+        placeholder: '给我的文章加点评论吧~',
+        recordIP: true
+    });
+    const infoEle = document.querySelector('#vcomments .info');
+    if (infoEle && infoEle.childNodes && infoEle.childNodes.length > 0) {
+        infoEle.childNodes.forEach(function (item) {
+            item.parentNode.removeChild(item);
+        });
+    }
+</script>
+<style>
+    #vcomments-box {
+        padding: 5px 30px;
+    }
+
+    @media screen and (max-width: 800px) {
+        #vcomments-box {
+            padding: 5px 0px;
+        }
+    }
+
+    #vcomments-box #vcomments {
+        background-color: #fff;
+    }
+
+    .v .vlist .vcard .vh {
+        padding-right: 20px;
+    }
+
+    .v .vlist .vcard {
+        padding-left: 10px;
+    }
+</style>
+
+  
+
+  
+  
+  
+
+</article>
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul class="list-inline">
+      <li>
+        &copy;
+        2020
+        柒零
+      </li>
+      <li>
+        
+        Powered by
+        
+        
+        <a href="https://hexo.io" target="_blank">Hexo</a> Theme <a href="https://github.com/Shen-Yu/hexo-theme-ayer" target="_blank">Ayer</a>
+        
+      </li>
+    </ul>
+    <ul class="list-inline">
+      <li>
+        
+        
+        <span>
+  <i>PV:<span id="busuanzi_value_page_pv"></span></i>
+  <i>UV:<span id="busuanzi_value_site_uv"></span></i>
+</span>
+        
+      </li>
+      
+      <li>
+        <!-- cnzz统计 -->
+        
+        <script type="text/javascript" src='https://s9.cnzz.com/z_stat.php?id=1278069914&amp;web_id=1278069914'></script>
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="to_top">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+      </div>
+    </main>
+    <aside class="sidebar">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="柒零de工作室"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    <div class="reward-item">
+      <img class="reward-img" src="/images/alipay.jpg">
+      <span class="reward-type">支付宝</span>
+    </div>
+    
+    
+    <div class="reward-item">
+      <img class="reward-img" src="/images/wechat.jpg">
+      <span class="reward-type">微信</span>
+    </div>
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/share.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+
+<script>
+  try {
+    var typed = new Typed("#subtitle", {
+      strings: ['愿你一生努力，一生被爱', '过尽千帆，归来仍是少年', ''],
+      startDelay: 0,
+      typeSpeed: 200,
+      loop: true,
+      backSpeed: 100,
+      showCursor: true
+    });
+  } catch (err) {
+  }
+
+</script>
+
+
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  // Tocbot_v4.7.0  http://tscanlin.github.io/tocbot/
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto',
+    onClick: (e) => {
+      $('.toc-link').removeClass('is-active-link');
+      $(`a[href=${e.target.hash}]`).addClass('is-active-link');
+      $(e.target.hash).scrollIntoView();
+      return false;
+    }
+  });
+</script>
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/js/ayer.js"></script>
+
+
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+
+<script type="text/javascript" src="https://js.users.51.la/20544303.js"></script>
+
+
+    
+  </div>
+</body>
+
+</html>

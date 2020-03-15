@@ -17,12 +17,11 @@
   <link rel="shortcut icon" href="/favicon.ico" />
   
   
-<link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/main.css">
 
   
-<script src="/js/pace.min.js"></script>
-
-
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
   
 
   
@@ -94,6 +93,7 @@
 
     
 
+    
     <div class="article-entry" itemprop="articleBody">
       
 
@@ -109,19 +109,86 @@
 <p><img src="/images/IMG_20200128_135125.jpg" alt=""></p>
 
       
-      <!-- 打赏 -->
+      <!-- reward -->
       
     </div>
-    <footer class="article-footer">
-      <a data-url="http://70-studio.top/2020/01/28/%E5%BB%BA%E7%AB%99%E4%B9%8B%E5%88%9D/" data-id="ck65wls3t0001zkm63szudeik"
-        class="article-share-link">分享</a>
+    
+    
+      <!-- copyright -->
       
+    <footer class="article-footer">
+      
+          
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=http://70-studio.top/2020/01/28/%E5%BB%BA%E7%AB%99%E4%B9%8B%E5%88%9D/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>
+      
+      
+
     </footer>
 
   </div>
 
   
   
+  <nav class="article-nav">
+    
+      <a href="/2020/03/15/%E8%AE%BAWindows-x64%E4%B8%8B%E5%8A%A8%E6%80%81%E5%BA%93%E5%8A%AB%E6%8C%81%E6%8A%80%E6%9C%AF/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            论Windows x64下动态库劫持技术
+          
+        </div>
+      </a>
+    
+    
+  </nav>
+
 
   
 
@@ -137,11 +204,11 @@
 <script>
     new Valine({
         el: '#vcomments',
-        notify: false,
-        verify: '',
         app_id: 'asimnOniRD3Sg6CRmSPA8Mxf-gzGzoHsz',
         app_key: '9KkP6TchQNcAWGop7AdX1oWN',
         path: window.location.pathname,
+        notify: 'false',
+        verify: 'false',
         avatar: 'mp',
         placeholder: '给我的文章加点评论吧~',
         recordIP: true
@@ -195,7 +262,7 @@
       </li>
       <li>
         
-          Powered by
+        Powered by
         
         
         <a href="https://hexo.io" target="_blank">Hexo</a> Theme <a href="https://github.com/Shen-Yu/hexo-theme-ayer" target="_blank">Ayer</a>
@@ -206,12 +273,13 @@
       <li>
         
         
-        <ul class="list-inline">
-  <li>PV:<span id="busuanzi_value_page_pv"></span></li>
-  <li>UV:<span id="busuanzi_value_site_uv"></span></li>
-</ul>
+        <span>
+  <i>PV:<span id="busuanzi_value_page_pv"></span></i>
+  <i>UV:<span id="busuanzi_value_site_uv"></span></i>
+</span>
         
       </li>
+      
       <li>
         <!-- cnzz统计 -->
         
@@ -221,14 +289,14 @@
     </ul>
   </div>
 </footer>
-    <div class="to_top">
+      <div class="to_top">
         <div class="totop" id="totop">
   <i class="ri-arrow-up-line"></i>
 </div>
       </div>
     </main>
-      <aside class="sidebar">
-        <button class="navbar-toggle"></button>
+    <aside class="sidebar">
+      <button class="navbar-toggle"></button>
 <nav class="navbar">
   
   <div class="logo">
@@ -281,8 +349,8 @@
   <div id="local-search-result" class="local-search-result"></div>
 </div>
 </div>
-      </aside>
-      <div id="mask"></div>
+    </aside>
+    <div id="mask"></div>
 
 <!-- #reward -->
 <div id="reward">
@@ -303,22 +371,30 @@
     
   </div>
 </div>
-      
+    
 <script src="/js/jquery-2.0.3.min.js"></script>
 
 
-<script src="/js/jquery.justifiedGallery.min.js"></script>
+<script src="/js/share.js"></script>
 
 
 <script src="/js/lazyload.min.js"></script>
 
 
-<script src="/js/busuanzi-2.3.pure.min.js"></script>
+<script>
+  try {
+    var typed = new Typed("#subtitle", {
+      strings: ['愿你一生努力，一生被爱', '过尽千帆，归来仍是少年', ''],
+      startDelay: 0,
+      typeSpeed: 200,
+      loop: true,
+      backSpeed: 100,
+      showCursor: true
+    });
+  } catch (err) {
+  }
 
-
-
-<script src="/fancybox/jquery.fancybox.min.js"></script>
-
+</script>
 
 
 
@@ -333,29 +409,27 @@
     headingSelector: 'h1, h2, h3, h4, h5, h6',
     hasInnerContainers: true,
     scrollSmooth: true,
+    scrollContainer: 'main',
     positionFixedSelector: '.tocbot',
     positionFixedClass: 'is-position-fixed',
     fixedSidebarOffset: 'auto',
     onClick: (e) => {
-      document.getElementById(e.target.innerText).scrollIntoView()
+      $('.toc-link').removeClass('is-active-link');
+      $(`a[href=${e.target.hash}]`).addClass('is-active-link');
+      $(e.target.hash).scrollIntoView();
       return false;
     }
   });
 </script>
 
 
-<script>
-  var ayerConfig = {
-    mathjax: false
-  }
-</script>
-
-
-<script src="/js/ayer.js"></script>
-
 
 <script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/js/ayer.js"></script>
+
 
 
 <!-- Root element of PhotoSwipe. Must have class pswp. -->
@@ -468,7 +542,14 @@
 
 
 
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+
 <script type="text/javascript" src="https://js.users.51.la/20544303.js"></script>
+
+
+    
   </div>
 </body>
 
